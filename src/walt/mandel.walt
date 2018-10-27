@@ -1,0 +1,157 @@
+// ############################################################
+// Walt Mandelbrot Test
+// by Thomas Sturm - thomas@sturm.to - storiesinflight.com
+// ############################################################
+
+const memory: Memory = { initial: 1 };								// 1 x 64K of memory
+
+type VoidType = () => void;
+type GetSizeType = () => i32;
+type SetRasterType = (i32, i32) => void;
+type LogType = (i32) => void;
+type CheckBelongType = (f32, f32, i32) => i32;
+
+
+// make JS methods available for WebAssembly calls
+import {
+	getCanvasWidth: GetSizeType,
+	getCanvasHeight: GetSizeType,
+	setRasterPixel: SetRasterType,
+	log: LogType
+} from 'env';
+
+
+// calculate a pixel of the Mandelbrot set
+function checkIfBelongsToMandelbrotSet(cx:f32, cy:f32, maxIter:i32): CheckBelongType {
+	let i:i32 = 0;
+	let x:f64 = 0;
+	let y:f64 = 0;
+	let xtemp:f64 = 0;
+	for (i = 0; i < maxIter; i += 1) {
+		if (x * x + y * y >= 4) {
+			break;
+		}
+		xtemp = x * x - y * y +cx;
+		y = 2 * x * y + cy;
+		x = xtemp;	
+	}
+	return i;
+}
+
+
+// calculate a full MandelBrot set for width x height pixels
+export function createMandelbrot(xminOffset:f32, xmaxOffset:f32, yminOffset:f32, ymaxOffset:f32): void {
+	const raster: i32[] = 0;
+
+	let screenWidth: i32 = 0;
+	let screenHeight: i32 = 0;
+	screenWidth = getCanvasWidth();
+	screenHeight = getCanvasHeight();
+
+	let iterations:i32 = 255;						// Mandelbrot iteration depth
+	let blockSize:i32 = 1;
+	let gap:i32 = 0;
+
+	let x:i32 = 0;
+	let y:i32 = 0;
+	let xPos:i32 = 0;
+	let yPos:i32 = 0;
+	let xNum:i32 = 0;
+	let yNum:i32 = 0;
+
+	let xmin:f32 = 0;
+	let xmax:f32 = 0;
+	let ymin:f32 = 0;
+	let ymax:f32 = 0;
+
+	xmin = -2.0;									// Mandelbrot base extent
+	xmax = 1.0;
+	ymin = -1.0;
+	ymax = 1.0;
+	
+	xmin += xminOffset;								// actual outer limits for this set
+	xmax += xmaxOffset;
+	ymin += yminOffset;
+	ymax += ymaxOffset;
+	
+	let rangeX:f32 = 0;
+	let rangeY:f32 = 0;
+	
+	let belongsToSet:i32 = 0;
+	let colorBase:i32 = 0;
+
+	xNum = screenWidth / (blockSize + gap);
+	yNum = screenHeight / (blockSize + gap);
+
+	let lastPos:i32 = 0;
+	let prevColor:i32 = 0;
+	let newColor:i32 = 0;
+
+	let nextIter:i32 = 0;
+	nextIter = iterations;
+
+	// loop through all raster lines for one image
+	for (y = 0; y < yNum; y += 1) {
+		rangeY = ymin + (ymax - ymin) * y / (yNum - 1);
+
+		// calculate one raster line
+		for (x = 0; x < xNum; x += 1) {
+			rangeX = xmin + (xmax - xmin) * x / (xNum - 1);
+
+			belongsToSet = checkIfBelongsToMandelbrotSet(rangeX, rangeY, nextIter);
+
+			if (belongsToSet <= 5) {
+				colorBase = 0;
+			} else {
+				colorBase = 255 - ( ((nextIter - belongsToSet) * (255/nextIter) * 20) - (nextIter * (255/nextIter) * 19) );
+/*
+if (y == 500) {
+	log(nextIter);
+	log(belongsToSet);
+	log(colorBase);
+}
+*/
+				if (belongsToSet * (255/nextIter) >= 252) {
+					colorBase = 0;
+				}
+				if (colorBase > 255) {
+					colorBase = 255;
+				}
+				
+				if (colorBase < 0) {
+					colorBase = 0;
+				}
+			}
+
+			if (colorBase < 2) {						// optimization: if the current pixel is close to 0, reduce iteration depth
+				nextIter = iterations / 4;
+			} else {
+				nextIter = iterations;
+			}
+
+			newColor = colorBase;
+
+			if (x == 0) {								// start a new raster line
+				raster[0] = newColor;
+				raster[1] = 1;
+				prevColor = newColor;
+				lastPos = 0;
+			} else {
+				if (newColor == prevColor) {			// just add to the counter for the previous color value
+					raster[lastPos * 2 + 1] += 1;
+				} else {								// store a new color value
+					lastPos += 1;
+					raster[lastPos * 2] = newColor;
+					raster[lastPos * 2 + 1] = 1;
+					prevColor = newColor;
+				}
+			}			
+		}
+
+		// send one completed raster line to the JS code
+		lastPos += 1;
+		for (x = 0; x < lastPos; x += 1) {
+			setRasterPixel(raster[x * 2], raster[x * 2 + 1]);
+		}
+	}
+}
