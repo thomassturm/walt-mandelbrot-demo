@@ -104,13 +104,6 @@ export function createMandelbrot(xminOffset:f32, xmaxOffset:f32, yminOffset:f32,
 				colorBase = 0;
 			} else {
 				colorBase = 255 - ( ((nextIter - belongsToSet) * (255/nextIter) * 20) - (nextIter * (255/nextIter) * 19) );
-/*
-if (y == 500) {
-	log(nextIter);
-	log(belongsToSet);
-	log(colorBase);
-}
-*/
 				if (belongsToSet * (255/nextIter) >= 252) {
 					colorBase = 0;
 				}
